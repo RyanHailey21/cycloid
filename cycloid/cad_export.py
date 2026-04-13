@@ -37,7 +37,16 @@ def _build_lobed_profile_points(
     return points
 
 
-def export_candidate_step(candidate: Candidate, path: Path) -> Path:
+def estimate_eccentric_shaft_hole_diameter_mm(candidate: Candidate) -> float:
+    # First-pass heuristic: scale with eccentricity and keep a practical minimum.
+    return max(8.0, 2.0 * candidate.eccentricity_mm + 6.0)
+
+
+def export_candidate_step(
+    candidate: Candidate,
+    path: Path,
+    eccentric_shaft_hole_diameter_mm: float | None = None,
+) -> Path:
     try:
         import cadquery as cq  # type: ignore
     except Exception as exc:
@@ -58,6 +67,11 @@ def export_candidate_step(candidate: Candidate, path: Path) -> Path:
     output_circle_r = candidate.output_pin_circle_radius_mm
     output_pin_r = candidate.output_roller_diameter_mm / 2.0
     output_hole_r = candidate.output_hole_diameter_mm / 2.0
+    shaft_hole_diameter = (
+        eccentric_shaft_hole_diameter_mm
+        if eccentric_shaft_hole_diameter_mm is not None
+        else estimate_eccentric_shaft_hole_diameter_mm(candidate)
+    )
 
     # Toothed cycloidal-style disc profile at eccentric center.
     profile_pts = _build_lobed_profile_points(
@@ -92,6 +106,13 @@ def export_candidate_step(candidate: Candidate, path: Path) -> Path:
         .workplane()
         .pushPoints(hole_pts)
         .hole(2.0 * output_hole_r, depth=thickness)
+    )
+    # Eccentric shaft bore at cycloid disc center (eccentric center in global frame).
+    disc = (
+        disc.faces(">Z")
+        .workplane()
+        .center(disc_center_x, 0.0)
+        .hole(shaft_hole_diameter, depth=thickness)
     )
 
     assembly = cq.Assembly(name="cycloidal_stage")
