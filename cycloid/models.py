@@ -47,9 +47,10 @@ class SolverConfig:
     min_ring_pitch_radius_mm: float = 80.0
     max_ring_pitch_radius_mm: float = 500.0
     ring_pitch_radius_step_mm: float = 5.0
-    ring_roller_radius_ratio_min: float = 0.20
-    ring_roller_radius_ratio_max: float = 0.42
-    ring_roller_radius_ratio_step: float = 0.02
+    # Ratio relative to ring pitch radius, not pin-to-pin spacing.
+    ring_roller_radius_ratio_min: float = 0.005
+    ring_roller_radius_ratio_max: float = 0.150
+    ring_roller_radius_ratio_step: float = 0.005
     eccentricity_ratio_min: float = 0.005
     eccentricity_ratio_max: float = 0.050
     eccentricity_ratio_step: float = 0.005
@@ -59,6 +60,7 @@ class SolverConfig:
     output_pin_counts: Tuple[int, ...] = (4, 6, 8)
     output_pin_circle_ratios: Tuple[float, ...] = (0.40, 0.45, 0.50, 0.55, 0.60)
     output_roller_fraction_choices: Tuple[float, ...] = (0.28, 0.32, 0.36, 0.40, 0.44)
+    # Diametral clearance term used directly in output hole sizing.
     clearance_mm: float = 0.5
     loaded_lobes: int = 3
     loaded_output_pins: int = 3
@@ -134,6 +136,8 @@ class Candidate:
     lobe_shear_goodman_sf: float
     ligament_bending_goodman_sf: float
     minimum_fatigue_sf: float
+    estimated_total_volume_mm3: float
+    estimated_total_mass_kg: float
     score: float
     notes: str
 

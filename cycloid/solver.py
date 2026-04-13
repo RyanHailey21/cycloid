@@ -23,10 +23,11 @@ def output_center_spacing(ro_mm: float, count: int) -> float:
 
 
 def frange(start: float, stop: float, step: float):
-    x = start
-    while x <= stop + 1e-9:
-        yield round(x, 10)
-        x += step
+    if step <= 0:
+        raise ValueError("step must be > 0")
+    count = int(math.floor((stop - start) / step + 1e-9))
+    for i in range(count + 1):
+        yield round(start + i * step, 10)
 
 
 def round_up_to_step(value: float, step: float) -> float:
@@ -37,30 +38,22 @@ def round_up_to_step(value: float, step: float) -> float:
 
 def score_candidate(
     *,
-    ring_pitch_radius_mm: float,
+    estimated_total_volume_mm3: float,
     eccentricity_ratio: float,
-    disc_thickness_mm: float,
     output_spacing_margin_mm: float,
     ring_spacing_margin_mm: float,
-    min_strength_sf: float,
-    min_fatigue_sf: float,
     bearing_stress_mpa: float,
 ) -> float:
-    compactness_cost = 0.08 * ring_pitch_radius_mm
+    # Primary objective: reduce total assembly volume while satisfying constraints.
+    volume_cost = 1.0e-5 * estimated_total_volume_mm3
     ecc_pref_cost = abs(eccentricity_ratio - 0.03) * 1000.0
-    thickness_reward = -0.2 * disc_thickness_mm
-    margin_reward = -0.15 * output_spacing_margin_mm - 0.08 * ring_spacing_margin_mm
-    static_strength_reward = -12.0 * min(min_strength_sf, 3.0)
-    fatigue_reward = -8.0 * min(min_fatigue_sf, 2.5)
+    margin_reward = -0.05 * output_spacing_margin_mm - 0.03 * ring_spacing_margin_mm
     bearing_cost = 0.2 * bearing_stress_mpa
 
     return (
-        compactness_cost
+        volume_cost
         + ecc_pref_cost
-        + thickness_reward
         + margin_reward
-        + static_strength_reward
-        + fatigue_reward
         + bearing_cost
     )
 
@@ -86,7 +79,7 @@ def required_radius_for_constraints(
 
     output_spacing_per_radius = 2.0 * ro_ratio * sin_no
     output_roller_per_radius = output_roller_fraction * output_spacing_per_radius
-    ring_roller_per_radius = ring_roller_ratio * 2.0 * sin_n
+    ring_roller_per_radius = ring_roller_ratio
 
     if output_spacing_per_radius <= 0 or output_roller_per_radius <= 0:
         return None
@@ -95,10 +88,14 @@ def required_radius_for_constraints(
         return None
     if eccentricity_ratio >= 0.5 * sin_n:
         return None
-    if ring_roller_ratio >= 0.45:
+    if ring_roller_per_radius >= 0.90 * sin_n:
         return None
 
-    spacing_den = 0.90 * output_spacing_per_radius - output_roller_per_radius - 2.0 * eccentricity_ratio
+    spacing_den = (
+        0.90 * output_spacing_per_radius
+        - output_roller_per_radius
+        - 2.0 * eccentricity_ratio
+    )
     if spacing_den <= 0:
         return None
 
@@ -106,7 +103,7 @@ def required_radius_for_constraints(
         1.0
         - ring_roller_per_radius
         - ro_ratio
-        - 3.5 * eccentricity_ratio
+        - 2.0 * eccentricity_ratio
         - 0.5 * output_roller_per_radius
     )
     if radial_margin_coeff <= 0:
@@ -146,8 +143,9 @@ def required_radius_for_constraints(
         )
     )
 
-    r_from_spacing = (2.0 * clearance_mm) / spacing_den
-    r_from_radial_margin = clearance_mm / radial_margin_coeff
+    # Clearance is diametral in hole sizing, so it contributes as c/R (not 2c/R).
+    r_from_spacing = clearance_mm / spacing_den
+    r_from_radial_margin = 0.5 * clearance_mm / radial_margin_coeff
 
     return max(
         r_from_bearing,
@@ -217,7 +215,7 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                 continue
 
                             ring_spacing = ring_center_spacing(ring_pitch_radius_mm, n)
-                            ring_roller_radius_mm = ring_roller_ratio * ring_spacing
+                            ring_roller_radius_mm = ring_roller_ratio * ring_pitch_radius_mm
                             eccentricity_mm = eccentricity_ratio * ring_pitch_radius_mm
 
                             output_pin_circle_radius_mm = ro_ratio * ring_pitch_radius_mm
@@ -229,13 +227,13 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                             output_hole_diameter_mm = (
                                 output_roller_diameter_mm
                                 + 2.0 * eccentricity_mm
-                                + 2.0 * config.clearance_mm
+                                + config.clearance_mm
                             )
 
                             radial_outer_limit = (
                                 ring_pitch_radius_mm
                                 - ring_roller_radius_mm
-                                - 2.5 * eccentricity_mm
+                                - eccentricity_mm
                             )
                             radial_margin = radial_outer_limit - (
                                 output_pin_circle_radius_mm + output_hole_diameter_mm / 2.0
@@ -281,21 +279,45 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                 0.90 * ring_spacing - 2.0 * ring_roller_radius_mm
                             )
                             min_strength_sf = minimum_strength_sf(strength)
-
-                            score = score_candidate(
-                                ring_pitch_radius_mm=ring_pitch_radius_mm,
-                                eccentricity_ratio=eccentricity_ratio,
-                                disc_thickness_mm=disc_thickness_mm,
-                                output_spacing_margin_mm=output_spacing_margin,
-                                ring_spacing_margin_mm=ring_spacing_margin,
-                                min_strength_sf=min_strength_sf,
-                                min_fatigue_sf=fatigue.minimum_fatigue_sf,
-                                bearing_stress_mpa=strength.bearing_stress_mpa,
-                            )
-
                             estimated_disc_outer_diameter_mm = 2.0 * (
                                 ring_pitch_radius_mm - ring_roller_radius_mm - eccentricity_mm
                             )
+                            disc_outer_radius_mm = estimated_disc_outer_diameter_mm / 2.0
+                            disc_volume_mm3 = (
+                                math.pi
+                                * disc_thickness_mm
+                                * max(
+                                    disc_outer_radius_mm ** 2
+                                    - output_pin_count * (output_hole_diameter_mm / 2.0) ** 2,
+                                    1e-9,
+                                )
+                            )
+                            ring_roller_volume_mm3 = (
+                                n * math.pi * (ring_roller_radius_mm ** 2) * disc_thickness_mm
+                            )
+                            output_roller_volume_mm3 = (
+                                output_pin_count
+                                * math.pi
+                                * (output_roller_diameter_mm / 2.0) ** 2
+                                * disc_thickness_mm
+                            )
+                            estimated_total_volume_mm3 = (
+                                disc_volume_mm3
+                                + ring_roller_volume_mm3
+                                + output_roller_volume_mm3
+                            )
+                            estimated_total_mass_kg = (
+                                estimated_total_volume_mm3 * 1.0e-9 * config.material.density_kg_m3
+                            )
+
+                            score = score_candidate(
+                                estimated_total_volume_mm3=estimated_total_volume_mm3,
+                                eccentricity_ratio=eccentricity_ratio,
+                                output_spacing_margin_mm=output_spacing_margin,
+                                ring_spacing_margin_mm=ring_spacing_margin,
+                                bearing_stress_mpa=strength.bearing_stress_mpa,
+                            )
+
                             estimated_output_speed_rpm = (
                                 config.motor_speed_rpm / config.stage_ratio
                             )
@@ -387,10 +409,16 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                     minimum_fatigue_sf=round(
                                         fatigue.minimum_fatigue_sf, 3
                                     ),
+                                    estimated_total_volume_mm3=round(
+                                        estimated_total_volume_mm3, 3
+                                    ),
+                                    estimated_total_mass_kg=round(
+                                        estimated_total_mass_kg, 6
+                                    ),
                                     score=round(score, 6),
                                     notes=(
-                                        "Constraint-driven sizing with static strength checks"
-                                        " and Goodman fatigue screening."
+                                        "Constraint-driven sizing with static and fatigue checks; "
+                                        "score prioritizes lower assembly volume among feasible designs."
                                     ),
                                 )
                             )
@@ -400,4 +428,6 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
 
 
 def candidate_rows(candidates: List[Candidate], top_n: int):
-    return [asdict(candidate) for candidate in candidates[:top_n]]
+    if top_n <= 0:
+        return []
+    return [asdict(candidate) for candidate in candidates[: min(top_n, len(candidates))]]

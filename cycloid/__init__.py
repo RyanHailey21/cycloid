@@ -1,3 +1,4 @@
+from .cad_export import export_candidate_step
 from .fatigue import evaluate_fatigue, is_fatigue_acceptable
 from .materials import available_material_keys, get_material
 from .models import (
@@ -10,6 +11,7 @@ from .models import (
 )
 from .ratio import choose_representative_stage, decompose_ratio
 from .solver import candidate_rows, generate_candidates
+from .visualization import write_candidate_svg
 
 __all__ = [
     "Candidate",
@@ -26,4 +28,6 @@ __all__ = [
     "decompose_ratio",
     "candidate_rows",
     "generate_candidates",
+    "write_candidate_svg",
+    "export_candidate_step",
 ]

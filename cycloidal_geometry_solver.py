@@ -25,8 +25,10 @@ from cycloid import (
     available_material_keys,
     candidate_rows,
     choose_representative_stage,
+    export_candidate_step,
     generate_candidates,
     get_material,
+    write_candidate_svg,
 )
 
 
@@ -78,6 +80,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--top-n", type=int, default=25)
     parser.add_argument("--out-csv", type=str, default="cycloidal_geometry_candidates.csv")
+    parser.add_argument("--out-svg", type=str, default="cycloidal_geometry_preview.svg")
+    parser.add_argument("--no-svg", action="store_true", default=False)
+    parser.add_argument("--out-step", type=str, default=None)
     return parser
 
 
@@ -152,10 +157,23 @@ def main():
         f"dynamic_amp={fatigue_config.dynamic_amplification}"
     )
     print(f"Candidate count: {len(candidates)}")
+    if args.top_n > len(candidates):
+        print(f"Requested top_n={args.top_n}, available candidates={len(candidates)}")
     print(f"CSV written to: {written_csv.resolve()}")
 
     if candidates:
         best = candidates[0]
+        if not args.no_svg:
+            svg_path = Path(args.out_svg)
+            write_candidate_svg(best, svg_path)
+            print(f"SVG written to: {svg_path.resolve()}")
+        if args.out_step:
+            step_path = Path(args.out_step)
+            try:
+                export_candidate_step(best, step_path)
+                print(f"STEP written to: {step_path.resolve()}")
+            except RuntimeError as exc:
+                print(f"STEP export skipped: {exc}")
         print("\nBest candidate:")
         for key, value in asdict(best).items():
             print(f"  {key}: {value}")
