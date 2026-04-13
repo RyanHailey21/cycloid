@@ -12,6 +12,8 @@ MATERIAL_LIBRARY: Dict[str, Material] = {
         elastic_modulus_gpa=205.0,
         poisson_ratio=0.29,
         yield_strength_mpa=655.0,
+        ultimate_strength_mpa=980.0,
+        endurance_limit_mpa=460.0,
     ),
     "1045_cd": Material(
         name="1045 Cold Drawn Steel",
@@ -19,6 +21,8 @@ MATERIAL_LIBRARY: Dict[str, Material] = {
         elastic_modulus_gpa=205.0,
         poisson_ratio=0.29,
         yield_strength_mpa=530.0,
+        ultimate_strength_mpa=625.0,
+        endurance_limit_mpa=310.0,
     ),
     "17_4ph_h900": Material(
         name="17-4PH Stainless (H900)",
@@ -26,6 +30,8 @@ MATERIAL_LIBRARY: Dict[str, Material] = {
         elastic_modulus_gpa=200.0,
         poisson_ratio=0.27,
         yield_strength_mpa=1170.0,
+        ultimate_strength_mpa=1310.0,
+        endurance_limit_mpa=620.0,
     ),
     "7075_t6": Material(
         name="7075-T6 Aluminum",
@@ -33,6 +39,8 @@ MATERIAL_LIBRARY: Dict[str, Material] = {
         elastic_modulus_gpa=71.7,
         poisson_ratio=0.33,
         yield_strength_mpa=505.0,
+        ultimate_strength_mpa=572.0,
+        endurance_limit_mpa=160.0,
     ),
 }
 

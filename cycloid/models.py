@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 
@@ -11,6 +11,8 @@ class Material:
     elastic_modulus_gpa: float
     poisson_ratio: float
     yield_strength_mpa: float
+    ultimate_strength_mpa: float
+    endurance_limit_mpa: float
 
 
 @dataclass(frozen=True)
@@ -21,12 +23,27 @@ class SafetyFactors:
 
 
 @dataclass(frozen=True)
+class FatigueConfig:
+    enabled: bool = True
+    minimum_fatigue_sf: float = 1.2
+    torque_min_ratio: float = 0.1
+    dynamic_amplification: float = 1.25
+    surface_factor: float = 0.85
+    size_factor: float = 0.90
+    reliability_factor: float = 0.868
+    load_factor: float = 1.0
+    temperature_factor: float = 1.0
+    miscellaneous_factor: float = 1.0
+
+
+@dataclass(frozen=True)
 class SolverConfig:
     stage_ratio: int
     motor_speed_rpm: float
     target_output_torque_nm: float
     material: Material
     safety_factors: SafetyFactors
+    fatigue: FatigueConfig = field(default_factory=FatigueConfig)
     min_ring_pitch_radius_mm: float = 80.0
     max_ring_pitch_radius_mm: float = 500.0
     ring_pitch_radius_step_mm: float = 5.0
@@ -60,6 +77,17 @@ class StrengthReport:
     sf_output_pin_shear: float
     sf_lobe_shear: float
     sf_ligament_bending: float
+
+
+@dataclass
+class FatigueReport:
+    corrected_endurance_limit_mpa: float
+    ultimate_strength_mpa: float
+    bearing_goodman_sf: float
+    output_pin_shear_goodman_sf: float
+    lobe_shear_goodman_sf: float
+    ligament_bending_goodman_sf: float
+    minimum_fatigue_sf: float
 
 
 @dataclass
@@ -100,6 +128,12 @@ class Candidate:
     sf_lobe_shear: float
     sf_ligament_bending: float
     minimum_strength_sf: float
+    corrected_endurance_limit_mpa: float
+    bearing_goodman_sf: float
+    output_pin_shear_goodman_sf: float
+    lobe_shear_goodman_sf: float
+    ligament_bending_goodman_sf: float
+    minimum_fatigue_sf: float
     score: float
     notes: str
 

@@ -4,6 +4,7 @@ import math
 from dataclasses import asdict
 from typing import List
 
+from .fatigue import evaluate_fatigue, is_fatigue_acceptable
 from .models import Candidate, SolverConfig
 from .strength import (
     compute_allowables,
@@ -41,14 +42,16 @@ def score_candidate(
     disc_thickness_mm: float,
     output_spacing_margin_mm: float,
     ring_spacing_margin_mm: float,
-    min_sf: float,
+    min_strength_sf: float,
+    min_fatigue_sf: float,
     bearing_stress_mpa: float,
 ) -> float:
     compactness_cost = 0.08 * ring_pitch_radius_mm
     ecc_pref_cost = abs(eccentricity_ratio - 0.03) * 1000.0
     thickness_reward = -0.2 * disc_thickness_mm
     margin_reward = -0.15 * output_spacing_margin_mm - 0.08 * ring_spacing_margin_mm
-    strength_reward = -12.0 * min(min_sf, 3.0)
+    static_strength_reward = -12.0 * min(min_strength_sf, 3.0)
+    fatigue_reward = -8.0 * min(min_fatigue_sf, 2.5)
     bearing_cost = 0.2 * bearing_stress_mpa
 
     return (
@@ -56,7 +59,8 @@ def score_candidate(
         + ecc_pref_cost
         + thickness_reward
         + margin_reward
-        + strength_reward
+        + static_strength_reward
+        + fatigue_reward
         + bearing_cost
     )
 
@@ -262,11 +266,21 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                             if not is_strength_acceptable(strength):
                                 continue
 
+                            fatigue = evaluate_fatigue(
+                                material=config.material,
+                                fatigue=config.fatigue,
+                                strength=strength,
+                            )
+                            if config.fatigue.enabled and not is_fatigue_acceptable(
+                                fatigue, config.fatigue
+                            ):
+                                continue
+
                             output_spacing_margin = 0.90 * output_spacing - output_hole_diameter_mm
                             ring_spacing_margin = (
                                 0.90 * ring_spacing - 2.0 * ring_roller_radius_mm
                             )
-                            min_sf = minimum_strength_sf(strength)
+                            min_strength_sf = minimum_strength_sf(strength)
 
                             score = score_candidate(
                                 ring_pitch_radius_mm=ring_pitch_radius_mm,
@@ -274,7 +288,8 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                 disc_thickness_mm=disc_thickness_mm,
                                 output_spacing_margin_mm=output_spacing_margin,
                                 ring_spacing_margin_mm=ring_spacing_margin,
-                                min_sf=min_sf,
+                                min_strength_sf=min_strength_sf,
+                                min_fatigue_sf=fatigue.minimum_fatigue_sf,
                                 bearing_stress_mpa=strength.bearing_stress_mpa,
                             )
 
@@ -353,11 +368,29 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                     sf_ligament_bending=round(
                                         strength.sf_ligament_bending, 3
                                     ),
-                                    minimum_strength_sf=round(min_sf, 3),
+                                    minimum_strength_sf=round(min_strength_sf, 3),
+                                    corrected_endurance_limit_mpa=round(
+                                        fatigue.corrected_endurance_limit_mpa, 3
+                                    ),
+                                    bearing_goodman_sf=round(
+                                        fatigue.bearing_goodman_sf, 3
+                                    ),
+                                    output_pin_shear_goodman_sf=round(
+                                        fatigue.output_pin_shear_goodman_sf, 3
+                                    ),
+                                    lobe_shear_goodman_sf=round(
+                                        fatigue.lobe_shear_goodman_sf, 3
+                                    ),
+                                    ligament_bending_goodman_sf=round(
+                                        fatigue.ligament_bending_goodman_sf, 3
+                                    ),
+                                    minimum_fatigue_sf=round(
+                                        fatigue.minimum_fatigue_sf, 3
+                                    ),
                                     score=round(score, 6),
                                     notes=(
-                                        "Constraint-driven prescription using closed-form"
-                                        " minimum-radius sizing plus strength verification."
+                                        "Constraint-driven sizing with static strength checks"
+                                        " and Goodman fatigue screening."
                                     ),
                                 )
                             )
