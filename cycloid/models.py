@@ -64,6 +64,9 @@ class SolverConfig:
     clearance_mm: float = 0.5
     loaded_lobes: int = 3
     loaded_output_pins: int = 3
+    dual_disc_count: int = 2
+    eccentric_bore_diameter_mm: float | None = None
+    min_eccentric_bore_sf: float = 1.2
 
 
 @dataclass
@@ -136,6 +139,12 @@ class Candidate:
     lobe_shear_goodman_sf: float
     ligament_bending_goodman_sf: float
     minimum_fatigue_sf: float
+    eccentric_shaft_hole_diameter_mm: float
+    eccentric_bore_bearing_stress_mpa: float
+    sf_eccentric_bore: float
+    estimated_required_shaft_diameter_mm: float
+    selected_output_shaft_diameter_mm: float
+    output_shaft_torsional_sf: float
     estimated_total_volume_mm3: float
     estimated_total_mass_kg: float
     score: float

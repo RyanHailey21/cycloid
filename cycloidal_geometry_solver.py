@@ -83,6 +83,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out-svg", type=str, default="cycloidal_geometry_preview.svg")
     parser.add_argument("--no-svg", action="store_true", default=False)
     parser.add_argument("--out-step", type=str, default=None)
+    parser.add_argument("--ecc-shaft-hole-dia-mm", type=float, default=None)
+    parser.add_argument("--min-bore-sf", type=float, default=1.2)
+    parser.add_argument("--single-disc", action="store_true", default=False)
     return parser
 
 
@@ -124,6 +127,9 @@ def main():
         material=material,
         safety_factors=safety_factors,
         fatigue=fatigue_config,
+        dual_disc_count=(1 if args.single_disc else 2),
+        eccentric_bore_diameter_mm=args.ecc_shaft_hole_dia_mm,
+        min_eccentric_bore_sf=args.min_bore_sf,
     )
 
     candidates = generate_candidates(config)
@@ -156,6 +162,10 @@ def main():
         f"torque_min_ratio={fatigue_config.torque_min_ratio}, "
         f"dynamic_amp={fatigue_config.dynamic_amplification}"
     )
+    print(
+        f"Disc configuration: {'single' if args.single_disc else 'dual'}; "
+        f"minimum eccentric bore SF={args.min_bore_sf}"
+    )
     print(f"Candidate count: {len(candidates)}")
     if args.top_n > len(candidates):
         print(f"Requested top_n={args.top_n}, available candidates={len(candidates)}")
@@ -170,7 +180,12 @@ def main():
         if args.out_step:
             step_path = Path(args.out_step)
             try:
-                export_candidate_step(best, step_path)
+                export_candidate_step(
+                    best,
+                    step_path,
+                    eccentric_shaft_hole_diameter_mm=args.ecc_shaft_hole_dia_mm,
+                    dual_discs=not args.single_disc,
+                )
                 print(f"STEP written to: {step_path.resolve()}")
             except RuntimeError as exc:
                 print(f"STEP export skipped: {exc}")

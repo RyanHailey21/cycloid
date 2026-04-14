@@ -6,6 +6,13 @@ from typing import List
 
 from .fatigue import evaluate_fatigue, is_fatigue_acceptable
 from .models import Candidate, SolverConfig
+from .shaft import (
+    estimate_eccentric_bore_diameter_mm,
+    evaluate_eccentric_bore_safety,
+    required_shaft_diameter_mm_from_torque,
+    select_standard_shaft_diameter_mm,
+    torsional_sf_for_shaft,
+)
 from .strength import (
     compute_allowables,
     evaluate_strength,
@@ -50,12 +57,7 @@ def score_candidate(
     margin_reward = -0.05 * output_spacing_margin_mm - 0.03 * ring_spacing_margin_mm
     bearing_cost = 0.2 * bearing_stress_mpa
 
-    return (
-        volume_cost
-        + ecc_pref_cost
-        + margin_reward
-        + bearing_cost
-    )
+    return volume_cost + ecc_pref_cost + margin_reward + bearing_cost
 
 
 def required_radius_for_constraints(
@@ -282,6 +284,44 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                             estimated_disc_outer_diameter_mm = 2.0 * (
                                 ring_pitch_radius_mm - ring_roller_radius_mm - eccentricity_mm
                             )
+
+                            eccentric_bore_diameter_mm = (
+                                config.eccentric_bore_diameter_mm
+                                if config.eccentric_bore_diameter_mm is not None
+                                else estimate_eccentric_bore_diameter_mm(
+                                    eccentricity_mm=eccentricity_mm,
+                                    output_roller_diameter_mm=output_roller_diameter_mm,
+                                )
+                            )
+                            per_disc_force_n = total_tangential_force_n / max(
+                                config.dual_disc_count, 1
+                            )
+                            bore_bearing_stress_mpa, sf_eccentric_bore = (
+                                evaluate_eccentric_bore_safety(
+                                    force_on_disc_n=per_disc_force_n,
+                                    bore_diameter_mm=eccentric_bore_diameter_mm,
+                                    disc_thickness_mm=disc_thickness_mm,
+                                    allowable_bearing_mpa=strength.allowable_bearing_mpa,
+                                )
+                            )
+                            if sf_eccentric_bore < config.min_eccentric_bore_sf:
+                                continue
+
+                            required_shaft_diameter_mm = (
+                                required_shaft_diameter_mm_from_torque(
+                                    torque_nmm=torque_nmm,
+                                    allowable_shear_mpa=strength.allowable_shear_mpa,
+                                )
+                            )
+                            selected_output_shaft_diameter_mm = (
+                                select_standard_shaft_diameter_mm(required_shaft_diameter_mm)
+                            )
+                            output_shaft_torsional_sf = torsional_sf_for_shaft(
+                                diameter_mm=selected_output_shaft_diameter_mm,
+                                torque_nmm=torque_nmm,
+                                allowable_shear_mpa=strength.allowable_shear_mpa,
+                            )
+
                             disc_outer_radius_mm = estimated_disc_outer_diameter_mm / 2.0
                             disc_volume_mm3 = (
                                 math.pi
@@ -302,7 +342,7 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                 * disc_thickness_mm
                             )
                             estimated_total_volume_mm3 = (
-                                disc_volume_mm3
+                                config.dual_disc_count * disc_volume_mm3
                                 + ring_roller_volume_mm3
                                 + output_roller_volume_mm3
                             )
@@ -408,6 +448,22 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                     ),
                                     minimum_fatigue_sf=round(
                                         fatigue.minimum_fatigue_sf, 3
+                                    ),
+                                    eccentric_shaft_hole_diameter_mm=round(
+                                        eccentric_bore_diameter_mm, 3
+                                    ),
+                                    eccentric_bore_bearing_stress_mpa=round(
+                                        bore_bearing_stress_mpa, 3
+                                    ),
+                                    sf_eccentric_bore=round(sf_eccentric_bore, 3),
+                                    estimated_required_shaft_diameter_mm=round(
+                                        required_shaft_diameter_mm, 3
+                                    ),
+                                    selected_output_shaft_diameter_mm=round(
+                                        selected_output_shaft_diameter_mm, 3
+                                    ),
+                                    output_shaft_torsional_sf=round(
+                                        output_shaft_torsional_sf, 3
                                     ),
                                     estimated_total_volume_mm3=round(
                                         estimated_total_volume_mm3, 3
