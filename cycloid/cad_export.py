@@ -6,6 +6,7 @@ from pathlib import Path
 from .assembly_validation import validate_candidate_geometry
 from .models import Candidate
 from .profile import generate_envelope_profile_points
+from .reporting import contact_pin_indices_for_angle, pin_contact_distances_for_angle
 
 
 def _solid_cylinder_segment(*, cq, diameter_mm: float, length_mm: float, x_offset_mm: float, z_center_mm: float):
@@ -169,6 +170,8 @@ def _disc_solid(
     z_center: float,
     phase_rad: float,
     bore_diameter_mm: float,
+    radial_clearance_mm: float = 0.02,
+    profile_points: int = 12000,
 ):
     thickness = candidate.disc_thickness_mm
     half_t = 0.5 * thickness
@@ -176,6 +179,8 @@ def _disc_solid(
     local_profile = generate_envelope_profile_points(
         candidate=candidate,
         phase_rad=phase_rad,
+        radial_clearance_mm=radial_clearance_mm,
+        theta_samples=max(2000, int(profile_points)),
     )
     profile_pts = [(disc_center_x + x, y) for x, y in local_profile]
     disc = (
@@ -311,6 +316,8 @@ def export_cycloidal_disc_step(
     phase_rad: float = 0.0,
     validate_profile: bool = True,
     min_profile_radius_mm: float = 0.05,
+    disc_pin_clearance_mm: float = 0.02,
+    profile_points: int = 12000,
 ) -> Path:
     try:
         import cadquery as cq  # type: ignore
@@ -324,7 +331,8 @@ def export_cycloidal_disc_step(
         _check_profile_feasibility(
             candidate=candidate,
             phase_rad=phase_rad,
-            check_contact=True,
+            radial_clearance_mm=disc_pin_clearance_mm,
+            check_contact=False,
             min_profile_radius_mm=min_profile_radius_mm,
         )
 
@@ -340,9 +348,113 @@ def export_cycloidal_disc_step(
         z_center=0.0,
         phase_rad=phase_rad,
         bore_diameter_mm=bore_diameter,
+        radial_clearance_mm=disc_pin_clearance_mm,
+        profile_points=profile_points,
     )
     assembly = cq.Assembly(name="cycloidal_disc_only")
     assembly.add(disc, name="cycloidal_disc", color=cq.Color("teal"))
+    assembly.save(str(path), exportType="STEP")
+    return path
+
+
+def export_disc_pins_shaft_step(
+    candidate: Candidate,
+    path: Path,
+    *,
+    eccentric_shaft_hole_diameter_mm: float | None = None,
+    validate_profile: bool = True,
+    min_profile_radius_mm: float = 0.05,
+    disc_pin_clearance_mm: float = 0.02,
+    profile_points: int = 12000,
+    contact_band_mm: float = 0.02,
+    contact_alpha_rad: float = 0.0,
+) -> Path:
+    try:
+        import cadquery as cq  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(
+            "CadQuery import failed. Use Python 3.11 or 3.12 in a venv and install: pip install cadquery. "
+            f"Original error: {type(exc).__name__}: {exc}"
+        ) from exc
+
+    if validate_profile:
+        _check_profile_feasibility(
+            candidate=candidate,
+            phase_rad=0.0,
+            radial_clearance_mm=disc_pin_clearance_mm,
+            check_contact=False,
+            min_profile_radius_mm=min_profile_radius_mm,
+        )
+
+    thickness = candidate.disc_thickness_mm
+    half_t = 0.5 * thickness
+    ring_pitch_r = candidate.ring_pitch_radius_mm
+    ring_roller_r = candidate.ring_roller_radius_mm
+    eccentricity = candidate.eccentricity_mm
+    bore_diameter = (
+        eccentric_shaft_hole_diameter_mm
+        if eccentric_shaft_hole_diameter_mm is not None
+        else candidate.eccentric_shaft_hole_diameter_mm
+    )
+
+    disc = _disc_solid(
+        cq=cq,
+        candidate=candidate,
+        disc_center_x=eccentricity,
+        z_center=0.0,
+        phase_rad=0.0,
+        bore_diameter_mm=bore_diameter,
+        radial_clearance_mm=disc_pin_clearance_mm,
+        profile_points=profile_points,
+    )
+
+    assembly = cq.Assembly(name="cycloidal_disc_pins_shaft")
+    assembly.add(disc, name="disc", color=cq.Color("teal"))
+
+    contact_indices = contact_pin_indices_for_angle(
+        candidate=candidate,
+        disc_pin_clearance_mm=disc_pin_clearance_mm,
+        contact_band_mm=contact_band_mm,
+        alpha_rad=contact_alpha_rad,
+        phase_rad=0.0,
+        profile_samples=min(max(1200, profile_points // 2), 8000),
+    )
+    if not contact_indices:
+        gaps = pin_contact_distances_for_angle(
+            candidate=candidate,
+            disc_pin_clearance_mm=disc_pin_clearance_mm,
+            alpha_rad=contact_alpha_rad,
+            phase_rad=0.0,
+            profile_samples=min(max(1200, profile_points // 2), 8000),
+        )
+        nearest_i = min(range(len(gaps)), key=lambda idx: abs(gaps[idx]))
+        contact_indices = [nearest_i]
+
+    for i in contact_indices:
+        theta = 2.0 * math.pi * i / candidate.ring_pin_count
+        x = ring_pitch_r * math.cos(theta)
+        y = ring_pitch_r * math.sin(theta)
+        pin = (
+            cq.Workplane("XY")
+            .center(x, y)
+            .circle(ring_roller_r)
+            .extrude(thickness)
+            .translate((0.0, 0.0, -half_t))
+        )
+        assembly.add(pin, name=f"ring_pin_{i}", color=cq.Color(0.20, 0.33, 0.65))
+
+    shaft = _build_stepped_eccentric_shaft(
+        cq=cq,
+        candidate=candidate,
+        stack_length_mm=thickness,
+        bore_diameter_mm=bore_diameter,
+        eccentricity_mm=eccentricity,
+        dual_discs=False,
+        disc_thickness_mm=thickness,
+        disc_gap_mm=0.0,
+    )
+    assembly.add(shaft, name="input_shaft", color=cq.Color(0.50, 0.50, 0.50))
+
     assembly.save(str(path), exportType="STEP")
     return path
 
@@ -354,6 +466,8 @@ def export_candidate_step(
     dual_discs: bool = True,
     validate_profile: bool = True,
     min_profile_radius_mm: float = 0.05,
+    disc_pin_clearance_mm: float = 0.02,
+    profile_points: int = 12000,
 ) -> Path:
     try:
         import cadquery as cq  # type: ignore
@@ -370,14 +484,16 @@ def export_candidate_step(
         _check_profile_feasibility(
             candidate=candidate,
             phase_rad=0.0,
-            check_contact=True,
+            radial_clearance_mm=disc_pin_clearance_mm,
+            check_contact=False,
             min_profile_radius_mm=min_profile_radius_mm,
         )
         if dual_discs:
             _check_profile_feasibility(
                 candidate=candidate,
                 phase_rad=math.pi,
-                check_contact=True,
+                radial_clearance_mm=disc_pin_clearance_mm,
+                check_contact=False,
                 min_profile_radius_mm=min_profile_radius_mm,
             )
 
@@ -411,6 +527,8 @@ def export_candidate_step(
         z_center=z_disc_a,
         phase_rad=0.0,
         bore_diameter_mm=bore_diameter,
+        radial_clearance_mm=disc_pin_clearance_mm,
+        profile_points=profile_points,
     )
     assembly = cq.Assembly(name="cycloidal_stage_dual")
     assembly.add(disc_a, name="disc_a", color=cq.Color("teal"))
@@ -424,6 +542,8 @@ def export_candidate_step(
             z_center=z_disc_b,
             phase_rad=0.0,
             bore_diameter_mm=bore_diameter,
+            radial_clearance_mm=disc_pin_clearance_mm,
+            profile_points=profile_points,
         )
         disc_b = disc_b.rotate((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 180.0)
         assembly.add(disc_b, name="disc_b", color=cq.Color("seagreen"))

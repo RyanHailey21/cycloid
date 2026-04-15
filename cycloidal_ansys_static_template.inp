@@ -1,0 +1,90 @@
+! ============================================================
+! Cycloidal Drive - ANSYS Static Structural Template (MAPDL)
+! Auto-generated from cycloidal_geometry_solver.py
+! Units: mm, N, s, MPa
+! ============================================================
+
+! ---------------------------
+! Selected candidate summary
+! ---------------------------
+! stage_ratio                       = 87
+! ring_pin_count                    = 88
+! lobe_count                        = 87
+! ring_pitch_diameter_mm            = 170.0
+! ring_roller_diameter_mm           = 3.4
+! eccentricity_mm                   = 0.85
+! disc_thickness_mm                 = 37.0
+! output_pin_count                  = 4
+! output_roller_diameter_mm         = 31.735
+! target_output_torque_Nm           = 3000.0
+! estimated_output_speed_rpm        = 20.689655
+! source_motor_speed_rpm            = 1800.0
+!
+! Estimated ring-pin contact (disc A):
+! contact_band_mm                   = +/-0.02
+! min/avg/max contact pins          = 2/2.92/5
+! recommended ring pins for static  = 10
+!
+! Recommended model variant:
+! - For fast static screening: use the "disc+pins+shaft" STEP and include ~10 pins around loaded zone.
+! - For highest fidelity: use full assembly STEP and all pins.
+
+/prep7
+
+! ---------------------------
+! Material (from solver)
+! ---------------------------
+mp,ex,1,205000.000000
+mp,prxy,1,0.290000
+mp,dens,1,7.850000000000e-09
+
+! ---------------------------------------------------
+! Geometry import note
+! ---------------------------------------------------
+! This template expects geometry to be imported in Workbench Mechanical.
+! If running pure MAPDL, import external geometry first and mesh, then
+! assign CM names below to matching regions.
+
+! ---------------------------------------------------
+! Named Selection / Component expectations
+! ---------------------------------------------------
+! CM,Housing, VOLU
+! CM,Disc, VOLU
+! CM,InputShaft, VOLU
+! CM,OutputCarrier, VOLU
+! CM,RingPins, VOLU
+! CM,OutputPins, VOLU
+
+! ---------------------------------------------------
+! Contact setup guidance (create in Mechanical)
+! ---------------------------------------------------
+! 1) Disc <-> RingPins : Frictional or Frictionless contact
+!    - Small sliding off, Large sliding on
+!    - Program controlled normal stiffness, adjust if penetration persists
+! 2) Disc output holes <-> OutputPins : Frictional/frictionless per study intent
+! 3) Disc bore <-> eccentric journal : Frictional or bonded (for simplified static)
+
+! ---------------------------------------------------
+! Loads / boundary conditions guidance
+! ---------------------------------------------------
+! - Fix housing support faces (or remote displacement on housing mount)
+! - Apply input torque on input shaft:
+!   Tin = 34.482759 N*m   (approx from ratio)
+! - Optionally verify output reaction torque near 3000.000000 N*m
+
+! ---------------------------------------------------
+! Solve placeholder
+! ---------------------------------------------------
+!/solu
+!antype,static
+!nlgeom,on
+!solve
+!finish
+
+! ---------------------------------------------------
+! Postprocessing placeholder
+! ---------------------------------------------------
+!/post1
+!set,last
+!plnsol,s,eqv
+!prnsol,u,comp

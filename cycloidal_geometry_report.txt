@@ -1,0 +1,74 @@
+Cycloidal Geometry Report
+========================
+
+Run Settings
+- overall_ratio: 658503
+- max_stages: 3
+- top_n: 1
+- material: 4140_qt
+- min_profile_radius_mm: 0.05
+- disc_pin_clearance_mm: 0.08
+- profile_points: 3000
+
+Estimated Ring-Pin Contact (disc A)
+- contact_band_mm: 0.02
+- angle_samples: 180
+- profile_samples: 4000
+- min_contact_pins: 2
+- avg_contact_pins: 3.383
+- max_contact_pins: 5
+
+Best Candidate Geometry + Strength/Fatigue
+- stage_ratio: 87
+- ring_pin_count: 88
+- lobe_count: 87
+- material_name: 4140 Q&T Steel
+- ring_pitch_radius_mm: 85.0
+- ring_pitch_diameter_mm: 170.0
+- ring_roller_radius_mm: 1.7
+- ring_roller_diameter_mm: 3.4
+- eccentricity_mm: 0.85
+- eccentricity_ratio: 0.01
+- disc_thickness_mm: 37.0
+- estimated_disc_outer_diameter_mm: 164.9
+- output_pin_count: 4
+- output_pin_circle_radius_mm: 51.0
+- output_pin_circle_diameter_mm: 102.0
+- output_roller_diameter_mm: 31.735
+- output_hole_diameter_mm: 33.935
+- ring_pin_center_spacing_mm: 6.068
+- output_pin_center_spacing_mm: 72.125
+- radial_margin_to_ring_mm: 14.483
+- total_tangential_force_N: 35294.118
+- force_per_loaded_lobe_N: 11764.706
+- force_per_loaded_output_pin_N: 11764.706
+- estimated_output_speed_rpm: 20.689655
+- allowable_bearing_mpa: 327.5
+- allowable_shear_mpa: 211.056
+- allowable_bending_mpa: 327.5
+- bearing_stress_mpa: 10.019
+- output_pin_shear_stress_mpa: 14.874
+- lobe_shear_stress_mpa: 187.038
+- output_hole_ligament_bending_stress_mpa: 5.232
+- sf_bearing: 32.687
+- sf_output_pin_shear: 14.19
+- sf_lobe_shear: 1.128
+- sf_ligament_bending: 62.592
+- minimum_strength_sf: 1.128
+- corrected_endurance_limit_mpa: 305.449
+- bearing_goodman_sf: 39.246
+- output_pin_shear_goodman_sf: 15.264
+- lobe_shear_goodman_sf: 1.214
+- ligament_bending_goodman_sf: 75.153
+- minimum_fatigue_sf: 1.214
+- eccentric_shaft_hole_diameter_mm: 11.107
+- eccentric_bore_bearing_stress_mpa: 42.94
+- sf_eccentric_bore: 7.627
+- estimated_required_shaft_diameter_mm: 41.677
+- selected_output_shaft_diameter_mm: 45.0
+- output_shaft_torsional_sf: 1.259
+- minimum_profile_radius_mm: 0.6851
+- estimated_total_volume_mm3: 1459294.914
+- estimated_total_mass_kg: 11.455465
+- score: 34.986128
+- notes: Constraint-driven sizing with static and fatigue checks; undercut guard enforced via minimum local profile radius; score prioritizes lower assembly volume among feasible designs.

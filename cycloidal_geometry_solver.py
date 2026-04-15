@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from cycloid import (
+    ContactPinStats,
     FatigueConfig,
     SafetyFactors,
     SolverConfig,
@@ -27,9 +28,12 @@ from cycloid import (
     choose_representative_stage,
     export_candidate_step,
     export_cycloidal_disc_step,
+    export_disc_pins_shaft_step,
+    estimate_contact_pin_stats,
     generate_candidates,
     get_material,
     validate_candidate_geometry,
+    write_ansys_static_template,
     write_candidate_svg,
 )
 
@@ -50,6 +54,49 @@ def write_csv(path: Path, rows) -> Path:
             writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
             writer.writeheader()
             writer.writerows(rows)
+        return fallback
+
+
+def write_report(
+    path: Path,
+    *,
+    args: argparse.Namespace,
+    best: dict,
+    contact: ContactPinStats,
+) -> Path:
+    lines = [
+        "Cycloidal Geometry Report",
+        "========================",
+        "",
+        "Run Settings",
+        f"- overall_ratio: {args.overall_ratio}",
+        f"- max_stages: {args.max_stages}",
+        f"- top_n: {args.top_n}",
+        f"- material: {args.material}",
+        f"- min_profile_radius_mm: {args.min_profile_radius_mm}",
+        f"- disc_pin_clearance_mm: {args.disc_pin_clearance_mm}",
+        f"- profile_points: {args.profile_points}",
+        "",
+        "Estimated Ring-Pin Contact (disc A)",
+        f"- contact_band_mm: {contact.contact_band_mm}",
+        f"- angle_samples: {contact.angle_samples}",
+        f"- profile_samples: {contact.profile_samples}",
+        f"- min_contact_pins: {contact.min_contact_pins}",
+        f"- avg_contact_pins: {contact.avg_contact_pins:.3f}",
+        f"- max_contact_pins: {contact.max_contact_pins}",
+        "",
+        "Best Candidate Geometry + Strength/Fatigue",
+    ]
+    for k, v in best.items():
+        lines.append(f"- {k}: {v}")
+
+    try:
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return path
+    except PermissionError:
+        stamped = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fallback = path.with_name(f"{path.stem}_{stamped}{path.suffix}")
+        fallback.write_text("\n".join(lines), encoding="utf-8")
         return fallback
 
 
@@ -82,11 +129,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--top-n", type=int, default=25)
     parser.add_argument("--out-csv", type=str, default="cycloidal_geometry_candidates.csv")
+    parser.add_argument("--out-report", type=str, default="cycloidal_geometry_report.txt")
+    parser.add_argument("--out-ansys-model", type=str, default=None)
     parser.add_argument("--out-svg", type=str, default="cycloidal_geometry_preview.svg")
     parser.add_argument("--no-svg", action="store_true", default=False)
     parser.add_argument("--out-step", type=str, default=None)
     parser.add_argument("--out-step-disc", type=str, default=None)
     parser.add_argument("--out-step-assembly", type=str, default=None)
+    parser.add_argument("--out-step-disc-pins-shaft", type=str, default=None)
     parser.add_argument("--ecc-shaft-hole-dia-mm", type=float, default=None)
     parser.add_argument("--min-bore-sf", type=float, default=1.2)
     parser.add_argument("--min-output-shaft-sf", type=float, default=1.2)
@@ -97,6 +147,36 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.05,
         help="Minimum allowed local curvature radius on cycloidal disc edge (undercut guard).",
+    )
+    parser.add_argument(
+        "--disc-pin-clearance-mm",
+        type=float,
+        default=0.05,
+        help="Radial running clearance between cycloidal disc profile and housing ring pins (for export geometry).",
+    )
+    parser.add_argument(
+        "--profile-points",
+        type=int,
+        default=12000,
+        help="Number of sampled points used to build exported cycloidal disc edge.",
+    )
+    parser.add_argument(
+        "--contact-band-mm",
+        type=float,
+        default=0.02,
+        help="Distance band around ring-pin radius used for contact-pin counting.",
+    )
+    parser.add_argument(
+        "--contact-angle-samples",
+        type=int,
+        default=180,
+        help="Number of input-angle samples for contact-pin counting.",
+    )
+    parser.add_argument(
+        "--contact-profile-samples",
+        type=int,
+        default=4000,
+        help="Profile samples used internally for contact-pin counting.",
     )
     return parser
 
@@ -180,7 +260,9 @@ def main():
         f"Disc configuration: {'single' if args.single_disc else 'dual'}; "
         f"minimum eccentric bore SF={args.min_bore_sf}; "
         f"minimum output shaft SF={args.min_output_shaft_sf}; "
-        f"minimum profile radius={args.min_profile_radius_mm} mm"
+        f"minimum profile radius={args.min_profile_radius_mm} mm; "
+        f"disc-pin clearance={args.disc_pin_clearance_mm} mm; "
+        f"profile points={args.profile_points}"
     )
     print(
         f"Assembly validation: {'disabled' if args.disable_assembly_validation else 'enabled'}"
@@ -210,6 +292,8 @@ def main():
                     dual_discs=not args.single_disc,
                     validate_profile=not args.disable_assembly_validation,
                     min_profile_radius_mm=args.min_profile_radius_mm,
+                    disc_pin_clearance_mm=args.disc_pin_clearance_mm,
+                    profile_points=args.profile_points,
                 )
                 print(f"STEP written to: {step_path.resolve()}")
             except RuntimeError as exc:
@@ -223,6 +307,8 @@ def main():
                     eccentric_shaft_hole_diameter_mm=args.ecc_shaft_hole_dia_mm,
                     validate_profile=not args.disable_assembly_validation,
                     min_profile_radius_mm=args.min_profile_radius_mm,
+                    disc_pin_clearance_mm=args.disc_pin_clearance_mm,
+                    profile_points=args.profile_points,
                 )
                 print(f"Disc STEP written to: {disc_step_path.resolve()}")
             except RuntimeError as exc:
@@ -241,10 +327,63 @@ def main():
                     dual_discs=not args.single_disc,
                     validate_profile=not args.disable_assembly_validation,
                     min_profile_radius_mm=args.min_profile_radius_mm,
+                    disc_pin_clearance_mm=args.disc_pin_clearance_mm,
+                    profile_points=args.profile_points,
                 )
                 print(f"Assembly STEP written to: {assembly_step_path.resolve()}")
             except RuntimeError as exc:
                 print(f"Assembly STEP export skipped: {exc}")
+        if args.out_step_disc_pins_shaft:
+            mesh_step_path = Path(args.out_step_disc_pins_shaft)
+            try:
+                export_disc_pins_shaft_step(
+                    best,
+                    mesh_step_path,
+                    eccentric_shaft_hole_diameter_mm=args.ecc_shaft_hole_dia_mm,
+                    validate_profile=not args.disable_assembly_validation,
+                    min_profile_radius_mm=args.min_profile_radius_mm,
+                    disc_pin_clearance_mm=args.disc_pin_clearance_mm,
+                    profile_points=args.profile_points,
+                    contact_band_mm=args.contact_band_mm,
+                    contact_alpha_rad=0.0,
+                )
+                print(f"Disc+pins+shaft STEP written to: {mesh_step_path.resolve()}")
+            except RuntimeError as exc:
+                print(f"Disc+pins+shaft STEP export skipped: {exc}")
+        contact_stats = estimate_contact_pin_stats(
+            candidate=best,
+            disc_pin_clearance_mm=args.disc_pin_clearance_mm,
+            contact_band_mm=args.contact_band_mm,
+            angle_samples=args.contact_angle_samples,
+            profile_samples=args.contact_profile_samples,
+            phase_rad=0.0,
+        )
+        print(
+            "Estimated ring-pin contact (disc A): "
+            f"min={contact_stats.min_contact_pins}, "
+            f"avg={contact_stats.avg_contact_pins:.2f}, "
+            f"max={contact_stats.max_contact_pins} "
+            f"(band=+/-{contact_stats.contact_band_mm} mm)"
+        )
+        report_path = Path(args.out_report)
+        written_report = write_report(
+            report_path,
+            args=args,
+            best=asdict(best),
+            contact=contact_stats,
+        )
+        print(f"Report written to: {written_report.resolve()}")
+        if args.out_ansys_model:
+            ansys_path = Path(args.out_ansys_model)
+            written_ansys = write_ansys_static_template(
+                path=ansys_path,
+                candidate=best,
+                material=material,
+                target_torque_nm=args.target_torque,
+                motor_speed_rpm=args.motor_speed_rpm,
+                contact_stats=contact_stats,
+            )
+            print(f"ANSYS model template written to: {written_ansys.resolve()}")
         print("\nBest candidate:")
         for key, value in asdict(best).items():
             print(f"  {key}: {value}")
