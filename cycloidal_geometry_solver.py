@@ -26,8 +26,10 @@ from cycloid import (
     candidate_rows,
     choose_representative_stage,
     export_candidate_step,
+    export_cycloidal_disc_step,
     generate_candidates,
     get_material,
+    validate_candidate_geometry,
     write_candidate_svg,
 )
 
@@ -83,9 +85,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out-svg", type=str, default="cycloidal_geometry_preview.svg")
     parser.add_argument("--no-svg", action="store_true", default=False)
     parser.add_argument("--out-step", type=str, default=None)
+    parser.add_argument("--out-step-disc", type=str, default=None)
+    parser.add_argument("--out-step-assembly", type=str, default=None)
     parser.add_argument("--ecc-shaft-hole-dia-mm", type=float, default=None)
     parser.add_argument("--min-bore-sf", type=float, default=1.2)
+    parser.add_argument("--min-output-shaft-sf", type=float, default=1.2)
+    parser.add_argument("--disable-assembly-validation", action="store_true", default=False)
     parser.add_argument("--single-disc", action="store_true", default=False)
+    parser.add_argument(
+        "--min-profile-radius-mm",
+        type=float,
+        default=0.05,
+        help="Minimum allowed local curvature radius on cycloidal disc edge (undercut guard).",
+    )
     return parser
 
 
@@ -130,6 +142,8 @@ def main():
         dual_disc_count=(1 if args.single_disc else 2),
         eccentric_bore_diameter_mm=args.ecc_shaft_hole_dia_mm,
         min_eccentric_bore_sf=args.min_bore_sf,
+        min_output_shaft_sf=args.min_output_shaft_sf,
+        min_profile_radius_mm=args.min_profile_radius_mm,
     )
 
     candidates = generate_candidates(config)
@@ -164,7 +178,12 @@ def main():
     )
     print(
         f"Disc configuration: {'single' if args.single_disc else 'dual'}; "
-        f"minimum eccentric bore SF={args.min_bore_sf}"
+        f"minimum eccentric bore SF={args.min_bore_sf}; "
+        f"minimum output shaft SF={args.min_output_shaft_sf}; "
+        f"minimum profile radius={args.min_profile_radius_mm} mm"
+    )
+    print(
+        f"Assembly validation: {'disabled' if args.disable_assembly_validation else 'enabled'}"
     )
     print(f"Candidate count: {len(candidates)}")
     if args.top_n > len(candidates):
@@ -180,15 +199,52 @@ def main():
         if args.out_step:
             step_path = Path(args.out_step)
             try:
+                if not args.disable_assembly_validation:
+                    validation = validate_candidate_geometry(best, dual_discs=not args.single_disc)
+                    if not validation.passed:
+                        raise RuntimeError(validation.message)
                 export_candidate_step(
                     best,
                     step_path,
                     eccentric_shaft_hole_diameter_mm=args.ecc_shaft_hole_dia_mm,
                     dual_discs=not args.single_disc,
+                    validate_profile=not args.disable_assembly_validation,
+                    min_profile_radius_mm=args.min_profile_radius_mm,
                 )
                 print(f"STEP written to: {step_path.resolve()}")
             except RuntimeError as exc:
                 print(f"STEP export skipped: {exc}")
+        if args.out_step_disc:
+            disc_step_path = Path(args.out_step_disc)
+            try:
+                export_cycloidal_disc_step(
+                    best,
+                    disc_step_path,
+                    eccentric_shaft_hole_diameter_mm=args.ecc_shaft_hole_dia_mm,
+                    validate_profile=not args.disable_assembly_validation,
+                    min_profile_radius_mm=args.min_profile_radius_mm,
+                )
+                print(f"Disc STEP written to: {disc_step_path.resolve()}")
+            except RuntimeError as exc:
+                print(f"Disc STEP export skipped: {exc}")
+        if args.out_step_assembly:
+            assembly_step_path = Path(args.out_step_assembly)
+            try:
+                if not args.disable_assembly_validation:
+                    validation = validate_candidate_geometry(best, dual_discs=not args.single_disc)
+                    if not validation.passed:
+                        raise RuntimeError(validation.message)
+                export_candidate_step(
+                    best,
+                    assembly_step_path,
+                    eccentric_shaft_hole_diameter_mm=args.ecc_shaft_hole_dia_mm,
+                    dual_discs=not args.single_disc,
+                    validate_profile=not args.disable_assembly_validation,
+                    min_profile_radius_mm=args.min_profile_radius_mm,
+                )
+                print(f"Assembly STEP written to: {assembly_step_path.resolve()}")
+            except RuntimeError as exc:
+                print(f"Assembly STEP export skipped: {exc}")
         print("\nBest candidate:")
         for key, value in asdict(best).items():
             print(f"  {key}: {value}")

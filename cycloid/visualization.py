@@ -101,7 +101,7 @@ def write_candidate_svg(candidate: Candidate, path: Path) -> Path:
     legend_y = canvas - 140
     elems.append(_svg_text(text_x, legend_y, "Legend:", size=15, color="#111827"))
     elems.append(_svg_text(text_x, legend_y + line, "Blue = ring rollers, Amber = output rollers, Purple dashed = output holes"))
-    elems.append(_svg_text(text_x, legend_y + 2 * line, "Teal = disc OD (eccentric center), Gray dashed = ring pitch circle"))
+    elems.append(_svg_text(text_x, legend_y + 2 * line, "Teal = estimated disc OD, Gray dashed = ring pitch circle"))
 
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{int(canvas)}" height="{int(canvas)}" '

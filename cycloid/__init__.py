@@ -1,4 +1,5 @@
-from .cad_export import export_candidate_step
+from .assembly_validation import validate_candidate_geometry
+from .cad_export import export_candidate_step, export_cycloidal_disc_step
 from .fatigue import evaluate_fatigue, is_fatigue_acceptable
 from .materials import available_material_keys, get_material
 from .models import (
@@ -9,6 +10,7 @@ from .models import (
     SafetyFactors,
     SolverConfig,
 )
+from .profile import make_sw_equations, sample_curve, validate_inputs
 from .ratio import choose_representative_stage, decompose_ratio
 from .shaft import estimate_eccentric_bore_diameter_mm
 from .solver import candidate_rows, generate_candidates
@@ -31,5 +33,10 @@ __all__ = [
     "generate_candidates",
     "write_candidate_svg",
     "export_candidate_step",
+    "export_cycloidal_disc_step",
     "estimate_eccentric_bore_diameter_mm",
+    "validate_candidate_geometry",
+    "make_sw_equations",
+    "sample_curve",
+    "validate_inputs",
 ]

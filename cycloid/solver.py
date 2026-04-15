@@ -6,11 +6,12 @@ from typing import List
 
 from .fatigue import evaluate_fatigue, is_fatigue_acceptable
 from .models import Candidate, SolverConfig
+from .profile import minimum_local_profile_radius_mm
 from .shaft import (
     estimate_eccentric_bore_diameter_mm,
     evaluate_eccentric_bore_safety,
     required_shaft_diameter_mm_from_torque,
-    select_standard_shaft_diameter_mm,
+    select_standard_shaft_for_min_sf,
     torsional_sf_for_shaft,
 )
 from .strength import (
@@ -313,14 +314,116 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                     allowable_shear_mpa=strength.allowable_shear_mpa,
                                 )
                             )
-                            selected_output_shaft_diameter_mm = (
-                                select_standard_shaft_diameter_mm(required_shaft_diameter_mm)
+                            selected_output_shaft_diameter_mm = select_standard_shaft_for_min_sf(
+                                required_diameter_mm=required_shaft_diameter_mm,
+                                minimum_sf=config.min_output_shaft_sf,
+                                torque_nmm=torque_nmm,
+                                allowable_shear_mpa=strength.allowable_shear_mpa,
                             )
                             output_shaft_torsional_sf = torsional_sf_for_shaft(
                                 diameter_mm=selected_output_shaft_diameter_mm,
                                 torque_nmm=torque_nmm,
                                 allowable_shear_mpa=strength.allowable_shear_mpa,
                             )
+                            if output_shaft_torsional_sf < config.min_output_shaft_sf:
+                                continue
+
+                            estimated_output_speed_rpm = (
+                                config.motor_speed_rpm / config.stage_ratio
+                            )
+                            probe_candidate = Candidate(
+                                stage_ratio=config.stage_ratio,
+                                ring_pin_count=n,
+                                lobe_count=lobe_count,
+                                material_name=config.material.name,
+                                ring_pitch_radius_mm=round(ring_pitch_radius_mm, 3),
+                                ring_pitch_diameter_mm=round(2.0 * ring_pitch_radius_mm, 3),
+                                ring_roller_radius_mm=round(ring_roller_radius_mm, 3),
+                                ring_roller_diameter_mm=round(2.0 * ring_roller_radius_mm, 3),
+                                eccentricity_mm=round(eccentricity_mm, 3),
+                                eccentricity_ratio=round(eccentricity_ratio, 5),
+                                disc_thickness_mm=round(disc_thickness_mm, 3),
+                                estimated_disc_outer_diameter_mm=round(
+                                    estimated_disc_outer_diameter_mm, 3
+                                ),
+                                output_pin_count=output_pin_count,
+                                output_pin_circle_radius_mm=round(output_pin_circle_radius_mm, 3),
+                                output_pin_circle_diameter_mm=round(
+                                    2.0 * output_pin_circle_radius_mm, 3
+                                ),
+                                output_roller_diameter_mm=round(output_roller_diameter_mm, 3),
+                                output_hole_diameter_mm=round(output_hole_diameter_mm, 3),
+                                ring_pin_center_spacing_mm=round(ring_spacing, 3),
+                                output_pin_center_spacing_mm=round(output_spacing, 3),
+                                radial_margin_to_ring_mm=round(radial_margin, 3),
+                                total_tangential_force_N=round(total_tangential_force_n, 3),
+                                force_per_loaded_lobe_N=round(force_per_lobe_n, 3),
+                                force_per_loaded_output_pin_N=round(force_per_output_pin_n, 3),
+                                estimated_output_speed_rpm=round(estimated_output_speed_rpm, 6),
+                                allowable_bearing_mpa=round(strength.allowable_bearing_mpa, 3),
+                                allowable_shear_mpa=round(strength.allowable_shear_mpa, 3),
+                                allowable_bending_mpa=round(strength.allowable_bending_mpa, 3),
+                                bearing_stress_mpa=round(strength.bearing_stress_mpa, 3),
+                                output_pin_shear_stress_mpa=round(
+                                    strength.output_pin_shear_stress_mpa, 3
+                                ),
+                                lobe_shear_stress_mpa=round(strength.lobe_shear_stress_mpa, 3),
+                                output_hole_ligament_bending_stress_mpa=round(
+                                    strength.output_hole_ligament_bending_stress_mpa, 3
+                                ),
+                                sf_bearing=round(strength.sf_bearing, 3),
+                                sf_output_pin_shear=round(strength.sf_output_pin_shear, 3),
+                                sf_lobe_shear=round(strength.sf_lobe_shear, 3),
+                                sf_ligament_bending=round(strength.sf_ligament_bending, 3),
+                                minimum_strength_sf=round(min_strength_sf, 3),
+                                corrected_endurance_limit_mpa=round(
+                                    fatigue.corrected_endurance_limit_mpa, 3
+                                ),
+                                bearing_goodman_sf=round(fatigue.bearing_goodman_sf, 3),
+                                output_pin_shear_goodman_sf=round(
+                                    fatigue.output_pin_shear_goodman_sf, 3
+                                ),
+                                lobe_shear_goodman_sf=round(fatigue.lobe_shear_goodman_sf, 3),
+                                ligament_bending_goodman_sf=round(
+                                    fatigue.ligament_bending_goodman_sf, 3
+                                ),
+                                minimum_fatigue_sf=round(fatigue.minimum_fatigue_sf, 3),
+                                eccentric_shaft_hole_diameter_mm=round(
+                                    eccentric_bore_diameter_mm, 3
+                                ),
+                                eccentric_bore_bearing_stress_mpa=round(
+                                    bore_bearing_stress_mpa, 3
+                                ),
+                                sf_eccentric_bore=round(sf_eccentric_bore, 3),
+                                estimated_required_shaft_diameter_mm=round(
+                                    required_shaft_diameter_mm, 3
+                                ),
+                                selected_output_shaft_diameter_mm=round(
+                                    selected_output_shaft_diameter_mm, 3
+                                ),
+                                output_shaft_torsional_sf=round(output_shaft_torsional_sf, 3),
+                                minimum_profile_radius_mm=0.0,
+                                estimated_total_volume_mm3=0.0,
+                                estimated_total_mass_kg=0.0,
+                                score=0.0,
+                                notes="",
+                            )
+                            min_profile_radius_mm = minimum_local_profile_radius_mm(
+                                candidate=probe_candidate,
+                                phase_rad=0.0,
+                                theta_samples=1600,
+                            )
+                            if config.dual_disc_count > 1:
+                                min_profile_radius_mm = min(
+                                    min_profile_radius_mm,
+                                    minimum_local_profile_radius_mm(
+                                        candidate=probe_candidate,
+                                        phase_rad=math.pi,
+                                        theta_samples=1600,
+                                    ),
+                                )
+                            if min_profile_radius_mm < config.min_profile_radius_mm:
+                                continue
 
                             disc_outer_radius_mm = estimated_disc_outer_diameter_mm / 2.0
                             disc_volume_mm3 = (
@@ -356,10 +459,6 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                 output_spacing_margin_mm=output_spacing_margin,
                                 ring_spacing_margin_mm=ring_spacing_margin,
                                 bearing_stress_mpa=strength.bearing_stress_mpa,
-                            )
-
-                            estimated_output_speed_rpm = (
-                                config.motor_speed_rpm / config.stage_ratio
                             )
 
                             candidates.append(
@@ -465,6 +564,7 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                     output_shaft_torsional_sf=round(
                                         output_shaft_torsional_sf, 3
                                     ),
+                                    minimum_profile_radius_mm=round(min_profile_radius_mm, 4),
                                     estimated_total_volume_mm3=round(
                                         estimated_total_volume_mm3, 3
                                     ),
@@ -474,6 +574,7 @@ def generate_candidates(config: SolverConfig) -> List[Candidate]:
                                     score=round(score, 6),
                                     notes=(
                                         "Constraint-driven sizing with static and fatigue checks; "
+                                        "undercut guard enforced via minimum local profile radius; "
                                         "score prioritizes lower assembly volume among feasible designs."
                                     ),
                                 )

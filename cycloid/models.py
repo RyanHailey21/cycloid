@@ -67,6 +67,8 @@ class SolverConfig:
     dual_disc_count: int = 2
     eccentric_bore_diameter_mm: float | None = None
     min_eccentric_bore_sf: float = 1.2
+    min_output_shaft_sf: float = 1.2
+    min_profile_radius_mm: float = 0.05
 
 
 @dataclass
@@ -145,6 +147,7 @@ class Candidate:
     estimated_required_shaft_diameter_mm: float
     selected_output_shaft_diameter_mm: float
     output_shaft_torsional_sf: float
+    minimum_profile_radius_mm: float
     estimated_total_volume_mm3: float
     estimated_total_mass_kg: float
     score: float

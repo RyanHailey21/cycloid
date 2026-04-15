@@ -69,3 +69,25 @@ def torsional_sf_for_shaft(
 ) -> float:
     applied_shear = (16.0 * torque_nmm) / max(math.pi * diameter_mm ** 3, 1e-9)
     return allowable_shear_mpa / max(applied_shear, 1e-9)
+
+
+def select_standard_shaft_for_min_sf(
+    *,
+    required_diameter_mm: float,
+    minimum_sf: float,
+    torque_nmm: float,
+    allowable_shear_mpa: float,
+) -> float:
+    start = select_standard_shaft_diameter_mm(required_diameter_mm)
+    for d in STANDARD_SHAFT_DIAMETERS_MM:
+        if d < start:
+            continue
+        sf = torsional_sf_for_shaft(
+            diameter_mm=d,
+            torque_nmm=torque_nmm,
+            allowable_shear_mpa=allowable_shear_mpa,
+        )
+        if sf >= minimum_sf:
+            return d
+    # Fallback if list is exhausted.
+    return start
